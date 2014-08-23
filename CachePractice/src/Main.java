@@ -28,7 +28,13 @@ public class Main {
 	static final String PASS = "hogu";
 
 	static final List<Integer> dummyList = new ArrayList<Integer>();
+	
+	//case 1,2
 	static final HashMap<Integer, String> cache = new HashMap<Integer, String>();
+	
+	//case 3
+	static final HashMap<Integer, DataNode> cache3 = new HashMap<Integer, DataNode>();
+	static DataNode root;
 
 	/*
 	 * 
@@ -112,6 +118,7 @@ public class Main {
 			
 			/**********************************************/
 			//2. Cache With Infinity Memory
+			/*
 			while ((readLine = bis.readLine()) != null) {
 				
 				id = Integer.parseInt(readLine);
@@ -120,15 +127,64 @@ public class Main {
 					cache.get(id);
 				} else {
 					sql = "SELECT v FROM ctest WHERE k = " + id;
-					System.out.println("id: " + id);
+					//System.out.println("id: " + id);
 					rs = stmt.executeQuery(sql);
-					System.out.println("rs: " + rs.toString());
 					
-					rs.next();
-					System.out.println("rs.getInt(1): " + rs.getString(1));
-					cache.put(id, rs.getString(1));
+					if (rs.next()) {
+						//System.out.println("rs.getInt(1): " + rs.getString(1));
+						cache.put(id, rs.getString(1));
+					}
+					
+					
 				}
 			}
+			*/
+			/**********************************************/
+			
+			/**********************************************/
+			//3. Cache With 7% Memory (= 700 values)
+			
+			while ((readLine = bis.readLine()) != null) {
+				
+				id = Integer.parseInt(readLine);
+				if (cache3.containsKey(id)) {
+					cache3.get(id);
+				} else {
+					sql = "SELECT v FROM ctest WHERE k = " + id;
+					
+					rs = stmt.executeQuery(sql);
+					
+					if (rs.next()) {
+						DataNode newNode = new DataNode(); 
+						newNode.value = rs.getString(1);
+						
+						switch (cache3.size()) {
+						case 0:
+							newNode.prev = newNode;
+							newNode.next = newNode;
+							root = newNode;
+							break;
+						case 700:
+							DataNode beforeLastNode = root.prev.prev;
+							beforeLastNode.next = newNode;
+							newNode.prev = beforeLastNode; 
+									
+							cache.remove(root.prev);
+							root.prev = newNode;
+							newNode.next = root;
+							root = newNode;
+							break;
+						default:
+							root.prev.next = newNode;
+							newNode.next = root;
+							break;
+						}
+						
+						cache3.put(id, newNode);
+					}
+				}
+			}
+			
 			/**********************************************/
 			
 			
@@ -166,4 +222,10 @@ public class Main {
 		}
 		System.out.println("Goodbye!");
 	}
+}
+
+class DataNode {
+	DataNode next;
+	DataNode prev;
+	String value;
 }
