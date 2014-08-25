@@ -45,114 +45,100 @@ public class Main {
 		createKeyValueStore();
 		saveKeyValueStoreToFile();
 		
+		/**********************************************/
 		QueryTestCallback case1 = new QueryTestCallback() {
 			
 			@Override
-			public int executeQueries(Statement stmt, ResultSet rs, BufferedReader bis) throws NumberFormatException, IOException, SQLException {
-				String readLine = null;
-				int id = 0;
-				String sql = null;
-				int miss = 0;
+			public String getTitle() {
+				return "< 캐시가 없을때 >";
+			}
+
+			@Override
+			public int lineReadTemplate(Statement stmt, ResultSet rs, int id, int miss) throws SQLException {
+				rs = stmt.executeQuery("SELECT k FROM ctest WHERE k = " + id);
+				return miss+1;
+			}
+		};
+		/**********************************************/		
+		QueryTestCallback case2 = new QueryTestCallback() {
+			
+			@Override
+			public String getTitle() {
+				return "< 무제한용량 캐시사용 >";
+			}
+
+			@Override
+			public int lineReadTemplate(Statement stmt, ResultSet rs, int id, int miss) throws SQLException {
 				
-				while ((readLine = bis.readLine()) != null) {
-					id = Integer.parseInt(readLine);
-					sql = "SELECT k FROM ctest WHERE k = " + id;
-					rs = stmt.executeQuery(sql);
+				if (cache.containsKey(id)) {
+					cache.get(id);
+				} else {
+					rs = stmt.executeQuery("SELECT v FROM ctest WHERE k = " + id);
+					
+					if (rs.next()) {
+						cache.put(id, rs.getString(1));
+					}
+					
+					++miss;
 				}
 				
 				return miss;
 			}
-
+		};
+		/**********************************************/		
+		QueryTestCallback case3 = new QueryTestCallback() {
+			
 			@Override
 			public String getTitle() {
-				return "캐시가 없을때";
+				return "< 7%용량제한 캐시사용 >";
+			}
+
+			@Override
+			public int lineReadTemplate(Statement stmt, ResultSet rs, int id, int miss) throws SQLException {
+				
+				if (cache3.containsKey(id)) {
+					cache3.get(id);
+				} else {
+					rs = stmt.executeQuery("SELECT v FROM ctest WHERE k = " + id);
+					
+					if (rs.next()) {
+						DataNode newNode = new DataNode(); 
+						newNode.value = rs.getString(1);
+						
+						switch (cache3.size()) {
+						case 0:
+							newNode.prev = newNode;
+							newNode.next = newNode;
+							root = newNode;
+							break;
+						case 700:
+							DataNode beforeLastNode = root.prev.prev;
+							beforeLastNode.next = newNode;
+							newNode.prev = beforeLastNode; 
+									
+							cache.remove(root.prev);
+							root.prev = newNode;
+							newNode.next = root;
+							root = newNode;
+							break;
+						default:
+							root.prev.next = newNode;
+							newNode.next = root;
+							break;
+						}
+						
+						cache3.put(id, newNode);
+						++miss;
+					}
+				}
+				return miss;
 			}
 		};
+		/**********************************************/
 		
 		selectWithEvaluation(case1);
-		
-		
-		/**********************************************/
-		//1. No Cache
-		/*
-		while ((readLine = bis.readLine()) != null) {
-			id = Integer.parseInt(readLine);
-			sql = "SELECT k FROM ctest WHERE k = " + id;
-			rs = stmt.executeQuery(sql);
-		}
-		*/
-		/**********************************************/
-		
-		/**********************************************/
-		//2. Cache With Infinity Memory
-		/*
-		while ((readLine = bis.readLine()) != null) {
-			
-			id = Integer.parseInt(readLine);
-			
-			if (cache.containsKey(id)) {
-				cache.get(id);
-			} else {
-				sql = "SELECT v FROM ctest WHERE k = " + id;
-				//System.out.println("id: " + id);
-				rs = stmt.executeQuery(sql);
-				
-				if (rs.next()) {
-					//System.out.println("rs.getInt(1): " + rs.getString(1));
-					cache.put(id, rs.getString(1));
-				}
-				
-				
-			}
-		}
-		*/
-		/**********************************************/
-		
-		/**********************************************/
-		//3. Cache With 7% Memory (= 700 values)
-		/*
-		while ((readLine = bis.readLine()) != null) {
-			
-			id = Integer.parseInt(readLine);
-			if (cache3.containsKey(id)) {
-				cache3.get(id);
-			} else {
-				sql = "SELECT v FROM ctest WHERE k = " + id;
-				
-				rs = stmt.executeQuery(sql);
-				
-				if (rs.next()) {
-					DataNode newNode = new DataNode(); 
-					newNode.value = rs.getString(1);
-					
-					switch (cache3.size()) {
-					case 0:
-						newNode.prev = newNode;
-						newNode.next = newNode;
-						root = newNode;
-						break;
-					case 700:
-						DataNode beforeLastNode = root.prev.prev;
-						beforeLastNode.next = newNode;
-						newNode.prev = beforeLastNode; 
-								
-						cache.remove(root.prev);
-						root.prev = newNode;
-						newNode.next = root;
-						root = newNode;
-						break;
-					default:
-						root.prev.next = newNode;
-						newNode.next = root;
-						break;
-					}
-					
-					cache3.put(id, newNode);
-				}
-			}
-		}
-		*/
-		/**********************************************/
+		selectWithEvaluation(case2);
+		selectWithEvaluation(case3);
 	}// end main
 
 	private static void saveKeyValueStoreToFile() throws FileNotFoundException,
@@ -197,11 +183,9 @@ public class Main {
 		try {
 
 			Class.forName("com.mysql.jdbc.Driver");
-
-			System.out.println("Connecting to database...");
+			System.out.println("\n=========================================");
+			System.out.println("Connecting to database...\n");
 			conn = DriverManager.getConnection(DB_URL, USER, PASS);
-
-			System.out.println("Creating statement...");
 			stmt = conn.createStatement();
 
 			File file = new File(FILE_PATH);
@@ -243,16 +227,22 @@ public class Main {
 	private static void testTemplate(Statement stmt, ResultSet rs, BufferedReader bis, QueryTestCallback callback) throws NumberFormatException, IOException, SQLException {
 		long startTime = System.currentTimeMillis();
 		
+		String readLine = null;
+		int id = 0;
+		int miss = 0;
 		
-		int miss = callback.executeQueries(stmt, rs, bis);
+		while ((readLine = bis.readLine()) != null) {
+			id = Integer.parseInt(readLine);
+			miss = callback.lineReadTemplate(stmt, rs, id, miss);
+		}
 		
 		long endTime   = System.currentTimeMillis();
 		long totalTime = endTime - startTime;
 		System.out.println(callback.getTitle());
 		System.out.println("TotalTime    : "+totalTime);
-		System.out.println("SuccessQuery : "+EXECUTE_QUERY_NUM);
-		System.out.println("FailQuery    : "+(miss));
-		System.out.println("QPS          : "+(EXECUTE_QUERY_NUM/(totalTime/1000)));
+		System.out.println("CACHE HIT    : "+(EXECUTE_QUERY_NUM-miss));
+		System.out.println("CACHE MISS   : "+(miss));
+		System.out.println("QPS          : "+(EXECUTE_QUERY_NUM/(totalTime/1000.0f)));
 	}
 }
 
