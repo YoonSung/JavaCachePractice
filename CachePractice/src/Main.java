@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 public class Main {
@@ -29,24 +30,19 @@ public class Main {
 
 	static final List<Integer> dummyList = new ArrayList<Integer>();
 	
-	//case 1,2
-	static final HashMap<Integer, String> cache = new HashMap<Integer, String>();
-	
-	//case 3
-	static final HashMap<Integer, DataNode> cache3 = new HashMap<Integer, DataNode>();
 	private static final int EXECUTE_QUERY_NUM = 10000;
 	static DataNode root;
 
 	/*
 	 * 
-	 * TODO 1. 캐시가 없을때 2. 캐시가 있을때 (용량 무제한) 3. 캐쉬가 있을때 (용량 7% - 700개)
+	 * 1. 캐시가 없을때 2. 캐시가 있을때 (용량 무제한) 3. 캐쉬가 있을때 (용량 7% - 700개)
 	 */
 	public static void main(String[] args) throws IOException {
 		createKeyValueStore();
 		saveKeyValueStoreToFile();
 		
 		/**********************************************/
-		QueryTestCallback case1 = new QueryTestCallback() {
+		QueryTestCallback<String> case1 = new QueryTestCallback<String>() {
 			
 			@Override
 			public String getTitle() {
@@ -54,13 +50,13 @@ public class Main {
 			}
 
 			@Override
-			public int lineReadTemplate(Statement stmt, ResultSet rs, int id, int miss) throws SQLException {
+			public int lineReadTemplate(Statement stmt, ResultSet rs, Map<Integer, String> memory, int id, int miss) throws SQLException {
 				rs = stmt.executeQuery("SELECT k FROM ctest WHERE k = " + id);
 				return miss+1;
 			}
 		};
 		/**********************************************/		
-		QueryTestCallback case2 = new QueryTestCallback() {
+		QueryTestCallback<String> case2 = new QueryTestCallback<String>() {
 			
 			@Override
 			public String getTitle() {
@@ -68,7 +64,7 @@ public class Main {
 			}
 
 			@Override
-			public int lineReadTemplate(Statement stmt, ResultSet rs, int id, int miss) throws SQLException {
+			public int lineReadTemplate(Statement stmt, ResultSet rs, Map<Integer, String> cache, int id, int miss) throws SQLException {
 				
 				if (cache.containsKey(id)) {
 					cache.get(id);
@@ -86,7 +82,7 @@ public class Main {
 			}
 		};
 		/**********************************************/		
-		QueryTestCallback case3 = new QueryTestCallback() {
+		QueryTestCallback<DataNode> case3 = new QueryTestCallback<DataNode>() {
 			
 			@Override
 			public String getTitle() {
@@ -94,10 +90,10 @@ public class Main {
 			}
 
 			@Override
-			public int lineReadTemplate(Statement stmt, ResultSet rs, int id, int miss) throws SQLException {
+			public int lineReadTemplate(Statement stmt, ResultSet rs, Map<Integer, DataNode> cache, int id, int miss) throws SQLException {
 				
-				if (cache3.containsKey(id)) {
-					cache3.get(id);
+				if (cache.containsKey(id)) {
+					cache.get(id);
 				} else {
 					rs = stmt.executeQuery("SELECT v FROM ctest WHERE k = " + id);
 					
@@ -105,7 +101,7 @@ public class Main {
 						DataNode newNode = new DataNode(); 
 						newNode.value = rs.getString(1);
 						
-						switch (cache3.size()) {
+						switch (cache.size()) {
 						case 0:
 							newNode.prev = newNode;
 							newNode.next = newNode;
@@ -127,7 +123,7 @@ public class Main {
 							break;
 						}
 						
-						cache3.put(id, newNode);
+						cache.put(id, newNode);
 						++miss;
 					}
 				}
@@ -174,7 +170,7 @@ public class Main {
 		Collections.shuffle(dummyList);
 	}
 
-	private static void selectWithEvaluation(QueryTestCallback callback) {
+	private static void selectWithEvaluation(QueryTestCallback<?> callback) {
 		Connection conn = null;
 		Statement stmt = null;
 		ResultSet rs = null;
@@ -183,8 +179,6 @@ public class Main {
 		try {
 
 			Class.forName("com.mysql.jdbc.Driver");
-			System.out.println("\n=========================================");
-			System.out.println("Connecting to database...\n");
 			conn = DriverManager.getConnection(DB_URL, USER, PASS);
 			stmt = conn.createStatement();
 
@@ -224,25 +218,30 @@ public class Main {
 		System.out.println("Goodbye!");
 	}
 
-	private static void testTemplate(Statement stmt, ResultSet rs, BufferedReader bis, QueryTestCallback callback) throws NumberFormatException, IOException, SQLException {
+	private static <T> void testTemplate(Statement stmt, ResultSet rs, BufferedReader bis, QueryTestCallback<T> callback) throws NumberFormatException, IOException, SQLException {
 		long startTime = System.currentTimeMillis();
 		
 		String readLine = null;
 		int id = 0;
 		int miss = 0;
 		
+		//Memory Cache
+		Map<Integer, T> cache = new HashMap<Integer, T>();
+
 		while ((readLine = bis.readLine()) != null) {
 			id = Integer.parseInt(readLine);
-			miss = callback.lineReadTemplate(stmt, rs, id, miss);
+			miss = callback.lineReadTemplate(stmt, rs, cache, id, miss);
 		}
 		
 		long endTime   = System.currentTimeMillis();
 		long totalTime = endTime - startTime;
+		System.out.println("\n=========================================");
 		System.out.println(callback.getTitle());
-		System.out.println("TotalTime    : "+totalTime);
-		System.out.println("CACHE HIT    : "+(EXECUTE_QUERY_NUM-miss));
-		System.out.println("CACHE MISS   : "+(miss));
-		System.out.println("QPS          : "+(EXECUTE_QUERY_NUM/(totalTime/1000.0f)));
+		System.out.println("TotalTime      : "+totalTime+" ms");
+		System.out.println("TotalQuery     : "+EXECUTE_QUERY_NUM);
+		System.out.println("  - CACHE HIT  : "+(EXECUTE_QUERY_NUM-miss));
+		System.out.println("  - CACHE MISS : "+(miss));
+		System.out.println("QPS            : "+(EXECUTE_QUERY_NUM/(totalTime/1000.0f)));
 	}
 }
 
