@@ -34,6 +34,7 @@ public class Main {
 	
 	//case 3
 	static final HashMap<Integer, DataNode> cache3 = new HashMap<Integer, DataNode>();
+	private static final int EXECUTE_QUERY_NUM = 10000;
 	static DataNode root;
 
 	/*
@@ -43,7 +44,115 @@ public class Main {
 	public static void main(String[] args) throws IOException {
 		createKeyValueStore();
 		saveKeyValueStoreToFile();
-		selectWithEvaluation();
+		
+		QueryTestCallback case1 = new QueryTestCallback() {
+			
+			@Override
+			public int executeQueries(Statement stmt, ResultSet rs, BufferedReader bis) throws NumberFormatException, IOException, SQLException {
+				String readLine = null;
+				int id = 0;
+				String sql = null;
+				int miss = 0;
+				
+				while ((readLine = bis.readLine()) != null) {
+					id = Integer.parseInt(readLine);
+					sql = "SELECT k FROM ctest WHERE k = " + id;
+					rs = stmt.executeQuery(sql);
+				}
+				
+				return miss;
+			}
+
+			@Override
+			public String getTitle() {
+				return "캐시가 없을때";
+			}
+		};
+		
+		selectWithEvaluation(case1);
+		
+		
+		/**********************************************/
+		//1. No Cache
+		/*
+		while ((readLine = bis.readLine()) != null) {
+			id = Integer.parseInt(readLine);
+			sql = "SELECT k FROM ctest WHERE k = " + id;
+			rs = stmt.executeQuery(sql);
+		}
+		*/
+		/**********************************************/
+		
+		/**********************************************/
+		//2. Cache With Infinity Memory
+		/*
+		while ((readLine = bis.readLine()) != null) {
+			
+			id = Integer.parseInt(readLine);
+			
+			if (cache.containsKey(id)) {
+				cache.get(id);
+			} else {
+				sql = "SELECT v FROM ctest WHERE k = " + id;
+				//System.out.println("id: " + id);
+				rs = stmt.executeQuery(sql);
+				
+				if (rs.next()) {
+					//System.out.println("rs.getInt(1): " + rs.getString(1));
+					cache.put(id, rs.getString(1));
+				}
+				
+				
+			}
+		}
+		*/
+		/**********************************************/
+		
+		/**********************************************/
+		//3. Cache With 7% Memory (= 700 values)
+		/*
+		while ((readLine = bis.readLine()) != null) {
+			
+			id = Integer.parseInt(readLine);
+			if (cache3.containsKey(id)) {
+				cache3.get(id);
+			} else {
+				sql = "SELECT v FROM ctest WHERE k = " + id;
+				
+				rs = stmt.executeQuery(sql);
+				
+				if (rs.next()) {
+					DataNode newNode = new DataNode(); 
+					newNode.value = rs.getString(1);
+					
+					switch (cache3.size()) {
+					case 0:
+						newNode.prev = newNode;
+						newNode.next = newNode;
+						root = newNode;
+						break;
+					case 700:
+						DataNode beforeLastNode = root.prev.prev;
+						beforeLastNode.next = newNode;
+						newNode.prev = beforeLastNode; 
+								
+						cache.remove(root.prev);
+						root.prev = newNode;
+						newNode.next = root;
+						root = newNode;
+						break;
+					default:
+						root.prev.next = newNode;
+						newNode.next = root;
+						break;
+					}
+					
+					cache3.put(id, newNode);
+				}
+			}
+		}
+		*/
+		/**********************************************/
 	}// end main
 
 	private static void saveKeyValueStoreToFile() throws FileNotFoundException,
@@ -79,7 +188,7 @@ public class Main {
 		Collections.shuffle(dummyList);
 	}
 
-	private static void selectWithEvaluation() {
+	private static void selectWithEvaluation(QueryTestCallback callback) {
 		Connection conn = null;
 		Statement stmt = null;
 		ResultSet rs = null;
@@ -94,110 +203,18 @@ public class Main {
 
 			System.out.println("Creating statement...");
 			stmt = conn.createStatement();
-			String sql;
 
 			File file = new File(FILE_PATH);
 			FileReader fis = new FileReader(file);
 			bis = new BufferedReader(fis);
-
-			String readLine = null;
-			int id = 0;
-
-			long startTime = System.currentTimeMillis();
 			
-			/**********************************************/
-			//1. No Cache
-			/*
-			while ((readLine = bis.readLine()) != null) {
-				id = Integer.parseInt(readLine);
-				sql = "SELECT k FROM ctest WHERE k = " + id;
-				rs = stmt.executeQuery(sql);
-			}
-			*/
-			/**********************************************/
-			
-			/**********************************************/
-			//2. Cache With Infinity Memory
-			/*
-			while ((readLine = bis.readLine()) != null) {
-				
-				id = Integer.parseInt(readLine);
-				
-				if (cache.containsKey(id)) {
-					cache.get(id);
-				} else {
-					sql = "SELECT v FROM ctest WHERE k = " + id;
-					//System.out.println("id: " + id);
-					rs = stmt.executeQuery(sql);
-					
-					if (rs.next()) {
-						//System.out.println("rs.getInt(1): " + rs.getString(1));
-						cache.put(id, rs.getString(1));
-					}
-					
-					
-				}
-			}
-			*/
-			/**********************************************/
-			
-			/**********************************************/
-			//3. Cache With 7% Memory (= 700 values)
-			
-			while ((readLine = bis.readLine()) != null) {
-				
-				id = Integer.parseInt(readLine);
-				if (cache3.containsKey(id)) {
-					cache3.get(id);
-				} else {
-					sql = "SELECT v FROM ctest WHERE k = " + id;
-					
-					rs = stmt.executeQuery(sql);
-					
-					if (rs.next()) {
-						DataNode newNode = new DataNode(); 
-						newNode.value = rs.getString(1);
-						
-						switch (cache3.size()) {
-						case 0:
-							newNode.prev = newNode;
-							newNode.next = newNode;
-							root = newNode;
-							break;
-						case 700:
-							DataNode beforeLastNode = root.prev.prev;
-							beforeLastNode.next = newNode;
-							newNode.prev = beforeLastNode; 
-									
-							cache.remove(root.prev);
-							root.prev = newNode;
-							newNode.next = root;
-							root = newNode;
-							break;
-						default:
-							root.prev.next = newNode;
-							newNode.next = root;
-							break;
-						}
-						
-						cache3.put(id, newNode);
-					}
-				}
-			}
-			
-			/**********************************************/
-			
-			
-			long endTime   = System.currentTimeMillis();
-			long totalTime = endTime - startTime;
-			System.out.println(totalTime);
+			testTemplate(stmt, rs, bis, callback);
 
 		} catch (SQLException se) {
 			se.printStackTrace();
 		} catch (Exception e) {
 			e.printStackTrace();
 		} finally {
-
 			try {
 				if (rs != null)
 					rs.close();
@@ -221,6 +238,21 @@ public class Main {
 			} catch (SQLException e) {}
 		}
 		System.out.println("Goodbye!");
+	}
+
+	private static void testTemplate(Statement stmt, ResultSet rs, BufferedReader bis, QueryTestCallback callback) throws NumberFormatException, IOException, SQLException {
+		long startTime = System.currentTimeMillis();
+		
+		
+		int miss = callback.executeQueries(stmt, rs, bis);
+		
+		long endTime   = System.currentTimeMillis();
+		long totalTime = endTime - startTime;
+		System.out.println(callback.getTitle());
+		System.out.println("TotalTime    : "+totalTime);
+		System.out.println("SuccessQuery : "+EXECUTE_QUERY_NUM);
+		System.out.println("FailQuery    : "+(miss));
+		System.out.println("QPS          : "+(EXECUTE_QUERY_NUM/(totalTime/1000)));
 	}
 }
 
